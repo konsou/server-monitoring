@@ -114,7 +114,8 @@ def scan_devices() -> list[str]:
 def test_one(device: str) -> DeviceTestResult:
     _device_info = device_info(device)
     _poll_time = poll_time(_device_info)
-    logger.info(f"Starting short self-test for {device}...")
+    _human_readable_name = human_readable_name(_device_info)
+    logger.info(f"Starting short self-test for {device} - {_human_readable_name}...")
     subprocess.run(
         ["smartctl", "--test=short", "--json", str(device)], stdout=subprocess.PIPE
     ).stdout.decode("utf-8")
@@ -128,7 +129,6 @@ def test_one(device: str) -> DeviceTestResult:
             f"Test still in progress. Waiting another {_poll_time / 60} minutes",
         )
     passed = test_passed(_device_info)
-    _human_readable_name = human_readable_name(_device_info)
     if passed:
         logger.info(f"passed: {device} - {_human_readable_name}")
         error_info = ""
