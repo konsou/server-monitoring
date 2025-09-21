@@ -1,9 +1,20 @@
 #!/usr/bin/env python3
 # Runs a short SMART test for all devices
 import json
+import logging
 import subprocess
+import sys
 import time
+
+from pathlib import Path
 from typing import NamedTuple
+
+import _discord
+
+LOG_FILE = Path("/var/log/smart.log")
+logging.basicConfig(filename=LOG_FILE, level=logging.INFO)
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler(sys.stdout))
 
 
 class DeviceTestResult(NamedTuple):
@@ -87,20 +98,26 @@ def scan_devices() -> list[str]:
 def test_one(device: str) -> DeviceTestResult:
     _device_info = device_info(device)
     _poll_time = poll_time(_device_info)
-    print(f"Starting short self-test for {device}...")
+    logger.info(f"Starting short self-test for {device}...")
     subprocess.run(
         ["smartctl", "--test=short", "--json", str(device)], stdout=subprocess.PIPE
     ).stdout.decode("utf-8")
-    print(f"Polling results every {_poll_time / 60} minutes")
+    logger.info(f"Polling results every {_poll_time / 60} minutes")
     while True:
         time.sleep(_poll_time)
         _device_info = device_info(device)
         if not test_in_progress(_device_info):
             break
-        print(f"Test still in progress. Waiting another {_poll_time / 60} minutes")
+        logger.info(
+            f"Test still in progress. Waiting another {_poll_time / 60} minutes",
+        )
     passed = test_passed(_device_info)
-    print(f"{device}: {'passed' if passed else 'FAILED'}")
-    info_text = "" if passed else error_info_human_readable(device)
+    if passed:
+        logger.info(f"passed: {device}")
+        info_text = ""
+    else:
+        logger.error(f"FAILED: {device}")
+        info_text = error_info_human_readable(device)
     return DeviceTestResult(device=device, passed=passed, info=info_text)
 
 
@@ -116,5 +133,20 @@ def test_all() -> TestResults:
 
 
 if __name__ == "__main__":
+    logger.info("Starting SMART short test for all devices")
+    _discord.notify_discord("Starting SMART short test for all devices")
     result = test_all()
+
+    if result.passed:
+        discord_msg = ["SMART short tests passed"]
+    else:
+        discord_msg = ["SMART short tests FAILED!"]
+    for r in result.results:
+        if r.passed:
+            discord_msg.append(f"passed: {r.device}")
+        else:
+            discord_msg.append(f"FAILED: {r.device}")
+            discord_msg.append(r.info)
+    _discord.notify_discord("\n".join(discord_msg), is_error=not result.passed)
+
     exit(not result.passed)
