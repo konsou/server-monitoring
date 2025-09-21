@@ -3,6 +3,8 @@ import subprocess
 import sys
 from typing import NamedTuple, Tuple, List
 
+from _discord import print_and_notify_discord
+
 GB = 1024 * 1024
 DEFAULT_ALERT_LIMIT = 50 * GB
 # TODO: load these from a conf file
@@ -17,18 +19,6 @@ class DeviceEntry(NamedTuple):
     # Mount point or zpool name
     name: str
     free_space: int
-
-
-def notify_discord(message: str, is_error: bool = False):
-    notify_args = ["notify-discord", message]
-    if is_error:
-        notify_args.extend(["--level", "error"])
-    subprocess.run(notify_args)
-
-
-def print_and_notify_discord(message: str, is_error: bool = False):
-    print(message)
-    notify_discord(message, is_error)
 
 
 def _parse_and_filter_entries(entries: List[str]) -> Tuple[DeviceEntry, ...]:
