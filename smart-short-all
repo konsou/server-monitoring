@@ -128,15 +128,16 @@ def test_one(device: str) -> DeviceTestResult:
             f"Test still in progress. Waiting another {_poll_time / 60} minutes",
         )
     passed = test_passed(_device_info)
+    _human_readable_name = human_readable_name(_device_info)
     if passed:
-        logger.info(f"passed: {device}")
+        logger.info(f"passed: {device} - {_human_readable_name}")
         error_info = ""
     else:
-        logger.error(f"FAILED: {device}")
+        logger.error(f"FAILED: {device} - {_human_readable_name}")
         error_info = human_readable_error_info(device)
     return DeviceTestResult(
         device=device,
-        human_readable_name=human_readable_name(_device_info),
+        human_readable_name=_human_readable_name,
         passed=passed,
         human_readable_error_info=error_info,
     )
