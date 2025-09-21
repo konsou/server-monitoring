@@ -1,0 +1,120 @@
+# /usr/bin/env python3
+# Runs a short SMART test for all devices
+import json
+import subprocess
+import time
+from typing import NamedTuple
+
+
+class DeviceTestResult(NamedTuple):
+    device: str
+    passed: bool
+    info: str = ""
+
+
+class TestResults(NamedTuple):
+    passed: bool
+    results: tuple[DeviceTestResult, ...]
+
+
+def device_info(device: str) -> dict:
+    i = subprocess.run(
+        ["smartctl", "--xall", "--json", str(device)], stdout=subprocess.PIPE
+    ).stdout.decode("utf-8")
+    return json.loads(i)
+
+
+def error_info_human_readable(device: str) -> str:
+    i = subprocess.run(
+        ["smartctl", "--log=selftest", "--log=error", "--log=xerror", str(device)],
+        stdout=subprocess.PIPE,
+    ).stdout.decode("utf-8")
+    return i
+
+
+def poll_time(info_dict: dict) -> int:
+    try:
+        return int(
+            info_dict["ata_smart_data"]["self_test"]["polling_minutes"]["short"] * 60
+        )
+    except KeyError:
+        # Polling time not available - default
+        return 60
+
+
+def test_in_progress(info_dict: dict) -> bool:
+    if "ata_smart_data" in info_dict:
+        val = (
+            info_dict.get("ata_smart_data", {})
+            .get("self_test", {})
+            .get("status", {})
+            .get("string", "")
+        )
+        return "in progress" in val
+    return bool(
+        info_dict.get("nvme_self_test_log", {})
+        .get("current_self_test_operation", {})
+        .get("value", 0)
+    )
+
+
+def test_passed(info_dict: dict) -> bool:
+    if "ata_smart_data" in info_dict:
+        return (
+            info_dict.get("ata_smart_data", {})
+            .get("self_test", {})
+            .get("status", {})
+            .get("passed", False)
+        )
+    result = (
+        info_dict.get("nvme_self_test_log", {})
+        .get("table", [])[0]
+        .get("self_test_result", {})
+        .get("value", 1)
+    )
+    # result value 0 = passed - flip to get success boolean
+    return not result
+
+
+def scan_devices() -> list[str]:
+    entries = subprocess.run(
+        ["smartctl", "--scan", "--json"], stdout=subprocess.PIPE
+    ).stdout.decode("utf-8")
+    parsed = json.loads(entries)
+    return [d["info_name"] for d in parsed["devices"]]
+
+
+def test_one(device: str) -> DeviceTestResult:
+    _device_info = device_info(device)
+    _poll_time = poll_time(_device_info)
+    print(f"Starting short self-test for {device}...")
+    subprocess.run(
+        ["smartctl", "--test=short", "--json", str(device)], stdout=subprocess.PIPE
+    ).stdout.decode("utf-8")
+    print(f"Polling results every {_poll_time / 60} minutes")
+    while True:
+        time.sleep(_poll_time)
+        _device_info = device_info(device)
+        if not test_in_progress(_device_info):
+            break
+        print(f"Test still in progress. Waiting another {_poll_time / 60} minutes")
+    passed = test_passed(_device_info)
+    print(f"{device}: {'passed' if passed else 'FAILED'}")
+    info_text = "" if passed else error_info_human_readable(device)
+    return DeviceTestResult(device=device, passed=passed, info=info_text)
+
+
+def test_all() -> TestResults:
+    tests_passed = True
+    devices = scan_devices()
+    device_results = []
+    for device in devices:
+        result = test_one(device)
+        device_results.append(result)
+        tests_passed = tests_passed and result
+    return TestResults(passed=tests_passed, results=tuple(device_results))
+
+
+if __name__ == "__main__":
+    result = test_all()
+    exit(not result.passed)
