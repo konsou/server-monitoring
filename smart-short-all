@@ -19,8 +19,9 @@ logger.addHandler(logging.StreamHandler(sys.stdout))
 
 class DeviceTestResult(NamedTuple):
     device: str
+    human_readable_name: str
     passed: bool
-    info: str = ""
+    human_readable_error_info: str = ""
 
 
 class TestResults(NamedTuple):
@@ -35,12 +36,22 @@ def device_info(device: str) -> dict:
     return json.loads(i)
 
 
-def error_info_human_readable(device: str) -> str:
+def human_readable_error_info(device: str) -> str:
     i = subprocess.run(
         ["smartctl", "--log=selftest", "--log=error", "--log=xerror", str(device)],
         stdout=subprocess.PIPE,
     ).stdout.decode("utf-8")
     return i
+
+
+def human_readable_name(info_dict: dict) -> str:
+    GB = 1024**3
+    capacity_bytes = (
+        info_dict.get("user_capacity", {}).get("bytes", None)
+        or info_dict.get("nvme_total_capacity", None)
+        or -1
+    )
+    return f"{info_dict.get('model_name', 'UNKNOWN')} - {capacity_bytes / GB:.1f}GB"
 
 
 def poll_time(info_dict: dict) -> int:
@@ -119,11 +130,16 @@ def test_one(device: str) -> DeviceTestResult:
     passed = test_passed(_device_info)
     if passed:
         logger.info(f"passed: {device}")
-        info_text = ""
+        error_info = ""
     else:
         logger.error(f"FAILED: {device}")
-        info_text = error_info_human_readable(device)
-    return DeviceTestResult(device=device, passed=passed, info=info_text)
+        error_info = human_readable_error_info(device)
+    return DeviceTestResult(
+        device=device,
+        human_readable_name=human_readable_name(_device_info),
+        passed=passed,
+        human_readable_error_info=error_info,
+    )
 
 
 def test_all() -> TestResults:
@@ -133,7 +149,7 @@ def test_all() -> TestResults:
     for device in devices:
         result = test_one(device)
         device_results.append(result)
-        tests_passed = tests_passed and result
+        tests_passed = tests_passed and result.passed
     return TestResults(passed=tests_passed, results=tuple(device_results))
 
 
@@ -141,6 +157,7 @@ if __name__ == "__main__":
     logger.info("Starting SMART short test for all devices")
     _discord.notify_discord("Starting SMART short test for all devices")
     result = test_all()
+    logger.info(f"{result=}")
 
     if result.passed:
         discord_msg = ["SMART short tests passed"]
@@ -148,10 +165,10 @@ if __name__ == "__main__":
         discord_msg = ["SMART short tests FAILED!"]
     for r in result.results:
         if r.passed:
-            discord_msg.append(f"passed: {r.device}")
+            discord_msg.append(f"passed: {r.device} - {r.human_readable_name}")
         else:
-            discord_msg.append(f"FAILED: {r.device}")
-            discord_msg.append(r.info)
+            discord_msg.append(f"FAILED: {r.device} - {r.human_readable_name}")
+            discord_msg.append(r.human_readable_error_info)
     _discord.notify_discord("\n".join(discord_msg), is_error=not result.passed)
 
     exit(not result.passed)
