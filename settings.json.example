@@ -1,0 +1,9 @@
+{
+  "CUSTOM_ALERT_LIMITS": {
+    "/boot": 200000,
+    "/another/path": 500000
+  },
+  "EXCLUDE_PATHS": [
+    "/.snapshots"
+  ]
+}

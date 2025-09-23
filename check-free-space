@@ -4,15 +4,7 @@ import sys
 from typing import NamedTuple, Tuple, List
 
 from _discord import print_and_notify_discord
-
-GB = 1024 * 1024
-DEFAULT_ALERT_LIMIT = 50 * GB
-# TODO: load these from a conf file
-CUSTOM_ALERT_LIMITS = {
-    "/boot": 200_000,
-    "/mnt/seagate-12t": 500 * GB,
-}
-EXCLUDE_DEVICES = ("/.snapshots",)
+from _load_settings import _load_settings
 
 
 class DeviceEntry(NamedTuple):
@@ -21,13 +13,18 @@ class DeviceEntry(NamedTuple):
     free_space: int
 
 
+GB = 1024 * 1024
+DEFAULT_ALERT_LIMIT = 50 * GB
+SETTINGS = _load_settings()
+
+
 def _parse_and_filter_entries(entries: List[str]) -> Tuple[DeviceEntry, ...]:
     tmp_entries = []
     for e in entries:
         name, free_space = e.strip().split()
         name = name.strip()
         free_space = int(free_space.strip())
-        if name in EXCLUDE_DEVICES:
+        if name in SETTINGS.exclude_paths:
             continue
         tmp_entries.append(DeviceEntry(name, free_space))
     return tuple(tmp_entries)
@@ -78,7 +75,7 @@ for entry in free_space_entries:
     if not entry:
         continue
 
-    alert_limit = CUSTOM_ALERT_LIMITS.get(entry.name, DEFAULT_ALERT_LIMIT)
+    alert_limit = SETTINGS.custom_alert_limits.get(entry.name, DEFAULT_ALERT_LIMIT)
     if entry.free_space < alert_limit:
         start_of_line = f"LOW SPACE:"
         has_alerts = True
