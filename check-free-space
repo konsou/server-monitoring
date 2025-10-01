@@ -3,6 +3,8 @@ import subprocess
 import sys
 from typing import NamedTuple, Tuple, List
 
+from tabulate import tabulate
+
 from _discord import print_and_notify_discord
 from _load_settings import _load_settings
 
@@ -70,7 +72,7 @@ def devices_free_space() -> Tuple[DeviceEntry, ...]:
 
 
 has_alerts = False
-messages = []
+rows = [["Status", "Name", "Free", "Limit"]]
 low_space_devices = []
 
 free_space_entries = devices_free_space()
@@ -79,24 +81,35 @@ for entry in free_space_entries:
         continue
 
     if entry.ignored:
-        messages.append(f"ignored: {entry.name}")
+        rows.append(["ignored", entry.name])
         continue
 
     alert_limit = SETTINGS.custom_alert_limits.get(entry.name, DEFAULT_ALERT_LIMIT)
     if entry.free_space < alert_limit:
-        start_of_line = f"LOW SPACE:"
+        status = f"LOW SPACE"
         has_alerts = True
         low_space_devices.append(entry.name)
     else:
-        start_of_line = f"ok:"
+        status = f"ok"
 
-    info_text = f"{start_of_line} {entry.name}: {entry.free_space / GB:.2f} GB ({alert_limit / GB:.2f} GB)"
-    messages.append(info_text)
+    row = [
+        status,
+        entry.name,
+        f"{entry.free_space / GB:.2f} GB",
+        f"{alert_limit / GB:.2f} GB",
+    ]
+    rows.append(row)
 
 if has_alerts:
-    messages.insert(0, f"ALERT - LOW DISK SPACE ON {', '.join(low_space_devices)}")
+    overall_status = f"ALERT - LOW DISK SPACE ON {', '.join(low_space_devices)}"
 else:
-    messages.insert(0, "Disk space OK")
+    overall_status = "Disk space OK"
 
-print_and_notify_discord("\n".join(messages), has_alerts)
+tabulated = tabulate(
+    rows, headers="firstrow", colalign=("left", "left", "right", "right")
+)
+print_and_notify_discord(
+    f"{overall_status}\n\n{tabulated}",
+    has_alerts,
+)
 sys.exit(has_alerts)
