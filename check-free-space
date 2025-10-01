@@ -120,6 +120,7 @@ else:
     for row in rows:
         this_row = "\t".join(row)
         formatted = f"{formatted}{this_row}\n"
+formatted = f"```{formatted}```"
 print_and_notify_discord(
     f"{overall_status}\n\n{formatted}",
     has_alerts,
