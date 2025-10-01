@@ -57,15 +57,15 @@ if __name__ == "__main__":
     logger.info(f"{result=}")
 
     if result.passed:
-        discord_msg = ["SMART status passed"]
+        discord_msg = ["SMART status check passed"]
     else:
         discord_msg = ["SMART status FAILED!"]
-    for r in result.results:
-        if r.passed:
-            discord_msg.append(f"passed: {r.device} - {r.human_readable_name}")
-        else:
-            discord_msg.append(f"FAILED: {r.device} - {r.human_readable_name}")
-            discord_msg.append(r.human_readable_error_info)
+        for r in result.results:
+            if r.passed:
+                discord_msg.append(f"passed: {r.device} - {r.human_readable_name}")
+            else:
+                discord_msg.append(f"FAILED: {r.device} - {r.human_readable_name}")
+                discord_msg.append(r.human_readable_error_info)
     _discord.notify_discord("\n".join(discord_msg), is_error=not result.passed)
 
     exit(not result.passed)
