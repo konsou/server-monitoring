@@ -11,10 +11,12 @@ class DeviceEntry(NamedTuple):
     # Mount point or zpool name
     name: str
     free_space: int
+    ignored: bool = False
 
 
 GB = 1024 * 1024
 DEFAULT_ALERT_LIMIT = 50 * GB
+IGNORED = -1
 SETTINGS = _load_settings()
 
 
@@ -23,10 +25,11 @@ def _parse_and_filter_entries(entries: List[str]) -> Tuple[DeviceEntry, ...]:
     for e in entries:
         name, free_space = e.strip().split()
         name = name.strip()
-        free_space = int(free_space.strip())
         if name in SETTINGS.exclude_paths:
-            continue
-        tmp_entries.append(DeviceEntry(name, free_space))
+            tmp_entries.append(DeviceEntry(name, free_space=IGNORED, ignored=True))
+        else:
+            free_space = int(free_space.strip())
+            tmp_entries.append(DeviceEntry(name, free_space=free_space, ignored=False))
     return tuple(tmp_entries)
 
 
@@ -73,6 +76,10 @@ low_space_devices = []
 free_space_entries = devices_free_space()
 for entry in free_space_entries:
     if not entry:
+        continue
+
+    if entry.ignored:
+        messages.append(f"ignored: {entry.name}")
         continue
 
     alert_limit = SETTINGS.custom_alert_limits.get(entry.name, DEFAULT_ALERT_LIMIT)
