@@ -48,7 +48,7 @@ if __name__ == "__main__":
     logger.info("Checking SMART status of all devices")
     _discord.notify_discord("Checking SMART status of all devices")
     result = test_all()
-    logger.info(f"{result=}")
+    logger.debug(f"{result=}")
 
     if result.passed:
         discord_msg = ["SMART status check passed"]
