@@ -58,7 +58,7 @@ if __name__ == "__main__":
     logger.info("Starting SMART short test for all devices")
     _discord.notify_discord("Starting SMART short test for all devices")
     result = test_all()
-    logger.info(f"{result=}")
+    logger.debug(f"{result=}")
 
     if result.passed:
         discord_msg = ["SMART short tests passed"]
