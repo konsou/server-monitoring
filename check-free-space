@@ -3,10 +3,16 @@ import subprocess
 import sys
 from typing import NamedTuple, Tuple, List
 
-from tabulate import tabulate
-
 from _discord import print_and_notify_discord
 from _load_settings import _load_settings
+
+try:
+    from tabulate import tabulate
+
+    TABULATE_AVAILABLE = True
+except ImportError:
+    print(f"WARNING: tabulate not available, will not format output as table")
+    TABULATE_AVAILABLE = False
 
 
 class DeviceEntry(NamedTuple):
@@ -105,11 +111,17 @@ if has_alerts:
 else:
     overall_status = "Disk space OK"
 
-tabulated = tabulate(
-    rows, headers="firstrow", colalign=("left", "left", "right", "right")
-)
+if TABULATE_AVAILABLE:
+    formatted = tabulate(
+        rows, headers="firstrow", colalign=("left", "left", "right", "right")
+    )
+else:
+    formatted = ""
+    for row in rows:
+        this_row = "\t".join(row)
+        formatted = f"{formatted}{this_row}\n"
 print_and_notify_discord(
-    f"{overall_status}\n\n{tabulated}",
+    f"{overall_status}\n\n{formatted}",
     has_alerts,
 )
 sys.exit(has_alerts)
