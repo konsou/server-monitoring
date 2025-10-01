@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+# Runs a SMART status check for all devices
+import logging
+import subprocess
+import sys
+
+from pathlib import Path
+
+import _discord
+import _smart
+
+LOG_FILE = Path("/var/log/smart.log")
+logging.basicConfig(filename=LOG_FILE, level=logging.INFO)
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler(sys.stdout))
+
+
+def test_one(device: str) -> _smart.DeviceTestResult:
+    device_info = _smart.device_info(device)
+    human_readable_name = _smart.human_readable_name(device_info)
+    logger.info(f"Getting SMART status for {device} - {human_readable_name}...")
+    subprocess.run(
+        ["smartctl", "--health", "--json", str(device)], stdout=subprocess.PIPE
+    ).stdout.decode("utf-8")
+
+    passed = _smart.status_passed(device_info)
+    if passed:
+        logger.info(f"passed: {device} - {human_readable_name}")
+        error_info = ""
+    else:
+        logger.error(f"FAILED: {device} - {human_readable_name}")
+        error_info = _smart.human_readable_error_info(device)
+    return _smart.DeviceTestResult(
+        device=device,
+        human_readable_name=human_readable_name,
+        passed=passed,
+        test_type=_smart.TestType.STATUS,
+        human_readable_error_info=error_info,
+    )
+
+
+def test_all() -> _smart.TestResults:
+    tests_passed = True
+    devices = _smart.scan_devices()
+    device_results = []
+    for device in devices:
+        result = test_one(device)
+        device_results.append(result)
+        tests_passed = tests_passed and result.passed
+    return _smart.TestResults(passed=tests_passed, results=tuple(device_results))
+
+
+if __name__ == "__main__":
+    logger.info("Checking SMART status of all devices")
+    _discord.notify_discord("Checking SMART status of all devices")
+    result = test_all()
+    logger.info(f"{result=}")
+
+    if result.passed:
+        discord_msg = ["SMART status passed"]
+    else:
+        discord_msg = ["SMART status FAILED!"]
+    for r in result.results:
+        if r.passed:
+            discord_msg.append(f"passed: {r.device} - {r.human_readable_name}")
+        else:
+            discord_msg.append(f"FAILED: {r.device} - {r.human_readable_name}")
+            discord_msg.append(r.human_readable_error_info)
+    _discord.notify_discord("\n".join(discord_msg), is_error=not result.passed)
+
+    exit(not result.passed)
