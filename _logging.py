@@ -5,15 +5,6 @@ from typing import Union
 FORMAT_STRING = "[%(asctime)s] %(levelname)-8s %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
-try:
-    import colorama
-
-    COLORAMA_AVAILABLE = True
-    colorama.init()
-except ImportError:
-    colorama = None
-    COLORAMA_AVAILABLE = False
-
 
 LogLevel = Union[
     logging.NOTSET,
