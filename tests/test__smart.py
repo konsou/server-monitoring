@@ -1,6 +1,6 @@
 import logging
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 
 import _smart
 import _smart_types
@@ -60,3 +60,21 @@ class TestSmart(TestCase):
                     human_readable_error_info="",
                 ),
             )
+
+    def test_status_all_calls_status(self):
+        disable_logging()
+        _smart.status = MagicMock()
+        _smart.scan_devices = MagicMock(
+            return_value=("/dev/sda", "/dev/sdb", "/dev/sdc")
+        )
+        _smart.status_all()
+        self.assertEqual(
+            len(_smart.status.call_args_list),
+            3,
+            msg="status() should be called for every device",
+        )
+        self.assertEqual(
+            _smart.status.call_args_list,
+            [call("/dev/sda"), call("/dev/sdb"), call("/dev/sdc")],
+            msg="status() should be called with correct device names",
+        )
