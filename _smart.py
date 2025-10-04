@@ -1,10 +1,10 @@
 import json
+import logging
 import subprocess
 
-import _logging
 import _smart_types
 
-logger = _logging.configure_logger(log_file="/var/log/smart.log")
+logger = logging.getLogger("server-monitoring")
 
 
 def device_info(device: str) -> dict:
@@ -101,6 +101,8 @@ def status(device: str) -> _smart_types.DeviceTestResult:
         ["smartctl", "--health", "--json", str(device)], stdout=subprocess.PIPE
     ).stdout.decode("utf-8")
 
+    # Update device info in case the smartctl command updated state
+    _device_info = device_info(device)
     passed = status_passed(_device_info)
     if passed:
         logger.info(f"passed: {device} - {_human_readable_name}")
