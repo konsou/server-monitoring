@@ -1,26 +1,5 @@
-import enum
 import json
 import subprocess
-from typing import NamedTuple
-
-
-class TestType(enum.Enum):
-    STATUS = enum.auto()
-    SHORT = enum.auto()
-    LONG = enum.auto()
-
-
-class DeviceTestResult(NamedTuple):
-    device: str
-    human_readable_name: str
-    passed: bool
-    test_type: TestType
-    human_readable_error_info: str = ""
-
-
-class TestResults(NamedTuple):
-    passed: bool
-    results: tuple[DeviceTestResult, ...]
 
 
 def device_info(device: str) -> dict:
@@ -39,13 +18,13 @@ def human_readable_error_info(device: str) -> str:
 
 
 def human_readable_name(info_dict: dict) -> str:
-    GB = 1024**3
+    gb = 1024**3
     capacity_bytes = (
         info_dict.get("user_capacity", {}).get("bytes", None)
         or info_dict.get("nvme_total_capacity", None)
         or -1
     )
-    return f"{info_dict.get('model_name', 'UNKNOWN')} - {capacity_bytes / GB:.1f}GB"
+    return f"{info_dict.get('model_name', 'UNKNOWN')} - {capacity_bytes / gb:.1f}GB"
 
 
 def poll_time(info_dict: dict) -> int:
