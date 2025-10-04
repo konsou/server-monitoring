@@ -117,3 +117,14 @@ def status(device: str) -> _smart_types.DeviceTestResult:
         test_type=_smart_types.TestType.STATUS,
         human_readable_error_info=error_info,
     )
+
+
+def status_all() -> _smart_types.TestResults:
+    tests_passed = True
+    devices = scan_devices()
+    device_results = []
+    for device in devices:
+        result = status(device)
+        device_results.append(result)
+        tests_passed = tests_passed and result.passed
+    return _smart_types.TestResults(passed=tests_passed, results=tuple(device_results))
