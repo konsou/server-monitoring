@@ -1,6 +1,11 @@
 import json
 import subprocess
 
+import _logging
+import _smart_types
+
+logger = _logging.configure_logger(log_file="/var/log/smart.log")
+
 
 def device_info(device: str) -> dict:
     i = subprocess.run(
@@ -86,3 +91,27 @@ def scan_devices() -> list[str]:
     ).stdout.decode("utf-8")
     parsed = json.loads(entries)
     return [d["info_name"] for d in parsed["devices"]]
+
+
+def status(device: str) -> _smart_types.DeviceTestResult:
+    _device_info = device_info(device)
+    _human_readable_name = human_readable_name(_device_info)
+    logger.info(f"Getting SMART status for {device} - {_human_readable_name}...")
+    subprocess.run(
+        ["smartctl", "--health", "--json", str(device)], stdout=subprocess.PIPE
+    ).stdout.decode("utf-8")
+
+    passed = status_passed(_device_info)
+    if passed:
+        logger.info(f"passed: {device} - {_human_readable_name}")
+        error_info = ""
+    else:
+        logger.error(f"FAILED: {device} - {_human_readable_name}")
+        error_info = human_readable_error_info(device)
+    return _smart_types.DeviceTestResult(
+        device=device,
+        human_readable_name=_human_readable_name,
+        passed=passed,
+        test_type=_smart_types.TestType.STATUS,
+        human_readable_error_info=error_info,
+    )
