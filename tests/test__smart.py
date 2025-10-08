@@ -36,45 +36,72 @@ class TestSmart(TestCase):
         res = _smart.status_passed(INFO_DICT_STATUS_BLOCK_MISSING)
         self.assertEqual(res, False)
 
-    def test_status_calls_smartctl(self):
+    @patch("_smart.device_info")
+    @patch("subprocess.run")
+    def test_status_calls_smartctl(self, mock_run, mock_device_info):
         disable_logging()
-        with patch("subprocess.run") as mock_run:
-            _smart.device_info = MagicMock(return_value=INFO_DICT_STATUS_OK)
-            _smart.status("/dev/dummy")
-            mock_run.assert_called_with(
-                ["smartctl", "--health", "--json", "/dev/dummy"], stdout=-1
-            )
-
-    def test_status_succeeds_when_drive_ok(self):
-        disable_logging()
-        with patch("subprocess.run") as _:
-            _smart.device_info = MagicMock(return_value=INFO_DICT_STATUS_OK)
-            res = _smart.status("/dev/dummy")
-            self.assertEqual(
-                res,
-                DeviceTestResult(
-                    device="/dev/dummy",
-                    human_readable_name="SAMSUNG MZYLF128HCHP-000L2 - 119.2GB",
-                    passed=True,
-                    test_type=_smart_types.TestType.STATUS,
-                    human_readable_error_info="",
-                ),
-            )
-
-    def test_status_all_calls_status(self):
-        disable_logging()
-        _smart.status = MagicMock()
-        _smart.scan_devices = MagicMock(
-            return_value=("/dev/sda", "/dev/sdb", "/dev/sdc")
+        mock_device_info.return_value = INFO_DICT_STATUS_OK
+        _smart.status("/dev/dummy")
+        mock_run.assert_called_with(
+            ["smartctl", "--health", "--json", "/dev/dummy"], stdout=-1
         )
+
+    @patch("_smart.human_readable_error_info")
+    @patch("_smart.device_info")
+    @patch("subprocess.run")
+    def test_status_succeeds_when_drive_ok(
+        self, _, mock_device_info, mock_human_readable_error_info
+    ):
+        disable_logging()
+        mock_device_info.return_value = INFO_DICT_STATUS_OK
+        mock_human_readable_error_info.return_value = ""
+        res = _smart.status("/dev/dummy")
+        self.assertEqual(
+            res,
+            DeviceTestResult(
+                device="/dev/dummy",
+                human_readable_name="SAMSUNG MZYLF128HCHP-000L2 - 119.2GB",
+                passed=True,
+                test_type=_smart_types.TestType.STATUS,
+                human_readable_error_info="",
+            ),
+        )
+
+    @patch("_smart.human_readable_error_info")
+    @patch("_smart.device_info")
+    @patch("subprocess.run")
+    def test_status_fails_when_drive_not_ok(
+        self, _, mock_device_info, mock_human_readable_error_info
+    ):
+        disable_logging()
+        mock_device_info.return_value = INFO_DICT_STATUS_FAIL
+        mock_human_readable_error_info.return_value = "Mock error info"
+        res = _smart.status("/dev/dummy")
+        self.assertEqual(
+            res,
+            DeviceTestResult(
+                device="/dev/dummy",
+                human_readable_name="SAMSUNG MZYLF128HCHP-000L2 - 119.2GB",
+                passed=False,
+                test_type=_smart_types.TestType.STATUS,
+                human_readable_error_info="Mock error info",
+            ),
+        )
+
+    @patch("_smart.status")
+    @patch("_smart.scan_devices")
+    def test_status_all_calls_status(self, mock_scan, mock_status):
+        disable_logging()
+        mock_scan.return_value = ("/dev/sda", "/dev/sdb", "/dev/sdc")
+
         _smart.status_all()
         self.assertEqual(
-            len(_smart.status.call_args_list),
+            len(mock_status.call_args_list),
             3,
             msg="status() should be called for every device",
         )
         self.assertEqual(
-            _smart.status.call_args_list,
+            mock_status.call_args_list,
             [call("/dev/sda"), call("/dev/sdb"), call("/dev/sdc")],
             msg="status() should be called with correct device names",
         )

@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from tests._test_data import SUCCESSFUL_SHORT_RESULT, FAILED_SHORT_RESULT
+from tests.test_data import SUCCESSFUL_SHORT_RESULT, FAILED_SHORT_RESULT
 
 
 class TestDeviceTestResult(TestCase):
