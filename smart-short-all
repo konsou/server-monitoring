@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 # Runs a short SMART test for all devices
-import subprocess
-import time
 
 import _discord
 import _logging
@@ -10,54 +8,10 @@ import _smart
 logger = _logging.configure_logger(log_file="/var/log/smart.log")
 
 
-def test_one(device: str) -> _smart.DeviceTestResult:
-    device_info = _smart.device_info(device)
-    poll_time = _smart.poll_time(device_info)
-    human_readable_name = _smart.human_readable_name(device_info)
-    logger.info(f"Starting short self-test for {device} - {human_readable_name}...")
-    subprocess.run(
-        ["smartctl", "--test=short", "--json", str(device)], stdout=subprocess.PIPE
-    ).stdout.decode("utf-8")
-    logger.info(f"Polling results every {poll_time / 60} minutes")
-    while True:
-        time.sleep(poll_time)
-        device_info = _smart.device_info(device)
-        if not _smart.test_in_progress(device_info):
-            break
-        logger.info(
-            f"Test still in progress. Waiting another {poll_time / 60} minutes",
-        )
-    passed = _smart.test_passed(device_info)
-    if passed:
-        logger.info(f"passed: {device} - {human_readable_name}")
-        error_info = ""
-    else:
-        logger.error(f"FAILED: {device} - {human_readable_name}")
-        error_info = _smart.human_readable_error_info(device)
-    return _smart.DeviceTestResult(
-        device=device,
-        human_readable_name=human_readable_name,
-        passed=passed,
-        test_type=_smart.TestType.SHORT,
-        human_readable_error_info=error_info,
-    )
-
-
-def test_all() -> _smart.TestResults:
-    tests_passed = True
-    devices = _smart.scan_devices()
-    device_results = []
-    for device in devices:
-        result = test_one(device)
-        device_results.append(result)
-        tests_passed = tests_passed and result.passed
-    return _smart.TestResults(passed=tests_passed, results=tuple(device_results))
-
-
 if __name__ == "__main__":
     logger.info("Starting SMART short test for all devices")
     _discord.notify_discord("Starting SMART short test for all devices")
-    result = test_all()
+    result = _smart.short_all()
     logger.debug(f"{result=}")
 
     if result.passed:
