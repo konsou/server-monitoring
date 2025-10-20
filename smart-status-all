@@ -1,1 +1,31 @@
-#!/usr/bin/env python3# Runs a SMART status check for all devicesimport _discordimport _loggingimport _smartlogger = _logging.configure_logger(log_file="/var/log/smart.log")if __name__ == "__main__":    num_devices = len(_smart.scan_devices())    msg = f"Checking SMART status of {num_devices} devices"    logger.info(msg)    _discord.notify_discord(msg)    result = _smart.status_all()    logger.debug(f"{result=}")    if result.passed:        discord_msg = ["SMART status check passed"]    else:        discord_msg = ["SMART status FAILED!"]        for r in result.results:            if r.passed:                discord_msg.append(f"passed: {r.device} - {r.human_readable_name}")            else:                discord_msg.append(f"FAILED: {r.device} - {r.human_readable_name}")                discord_msg.append(r.human_readable_error_info)    _discord.notify_discord("\n".join(discord_msg), is_error=not result.passed)    exit(not result.passed)
+#!/usr/bin/env python3
+# Runs a SMART status check for all devices
+
+import _discord
+import _logging
+import _smart
+
+logger = _logging.configure_logger(log_file="/var/log/smart.log")
+
+
+if __name__ == "__main__":
+    num_devices = len(_smart.scan_devices())
+    msg = f"Checking SMART status of {num_devices} devices"
+    logger.info(msg)
+    _discord.notify_discord(msg)
+    result = _smart.status_all()
+    logger.debug(f"{result=}")
+
+    if result.passed:
+        discord_msg = ["SMART status check passed"]
+    else:
+        discord_msg = ["SMART status FAILED!"]
+        for r in result.results:
+            if r.passed:
+                discord_msg.append(f"passed: {r.device} - {r.human_readable_name}")
+            else:
+                discord_msg.append(f"FAILED: {r.device} - {r.human_readable_name}")
+                discord_msg.append(r.human_readable_error_info)
+    _discord.notify_discord("\n".join(discord_msg), is_error=not result.passed)
+
+    exit(not result.passed)
