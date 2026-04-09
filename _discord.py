@@ -21,7 +21,7 @@ def notify_discord(message: str, is_error: bool = False):
     if notify_result.returncode == 0:
         logger.info(notify_result.stdout)
     else:
-        logger.error(notify_result.stdout)
+        logger.error(f"Could not send Discord message: {notify_result.stdout}")
 
 
 def log_and_notify_discord(message: str, is_error: bool = False):
