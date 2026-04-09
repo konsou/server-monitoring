@@ -111,9 +111,8 @@ def status(device: str) -> _smart_types.DeviceTestResult:
     # Update device info in case the smartctl command updated state
     _device_info = device_info(device)
 
-    _log_test_result(_device_info)
-
     passed = status_passed(_device_info)
+    _log_test_result(_device_info, passed)
     error_info = "" if passed else human_readable_error_info(device)
     return _smart_types.DeviceTestResult(
         device=device,
@@ -151,9 +150,8 @@ def short(device: str) -> _smart_types.DeviceTestResult:
             f"Test still in progress. Waiting another {_poll_time / 60} minutes",
         )
 
-    _log_test_result(_device_info)
-
     passed = test_passed(_device_info)
+    _log_test_result(_device_info, passed)
     error_info = "" if passed else human_readable_error_info(device)
     return _smart_types.DeviceTestResult(
         device=device,
@@ -169,8 +167,7 @@ def _threaded_short(device: str, results_queue: Queue[_smart_types.DeviceTestRes
     results_queue.put(result)
 
 
-def _log_test_result(info_dict: dict):
-    passed = test_passed(info_dict)
+def _log_test_result(info_dict: dict, passed: bool):
     _human_readable_name = human_readable_name(info_dict)
     device = device_from_info_dict(info_dict)
     if passed:
