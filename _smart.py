@@ -186,7 +186,10 @@ def short_all() -> _smart_types.TestResults:
     # Start tests in threads
     threads = []
     for d in devices:
-        t = threading.Thread(target=_threaded_short, args=(d, device_results_queue))
+        # daemon=True --> threads don't block exit, don't stay in background
+        t = threading.Thread(
+            target=_threaded_short, args=(d, device_results_queue), daemon=True
+        )
         threads.append(t)
         t.start()
 
@@ -195,8 +198,9 @@ def short_all() -> _smart_types.TestResults:
         t.join()
 
     # Convert from Queue to list
-    while device_results_queue:
-        res = device_results_queue.get()
+    while not device_results_queue.empty():
+        # Don't block when empty, instead throw Empty
+        res = device_results_queue.get(block=False)
         results.append(res)
         tests_passed = tests_passed and res.passed
 
