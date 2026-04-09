@@ -1,7 +1,9 @@
 import json
 import logging
 import subprocess
+import threading
 import time
+from queue import Queue
 
 import _smart_types
 
@@ -138,7 +140,7 @@ def short(device: str) -> _smart_types.DeviceTestResult:
     _poll_time = poll_time(_device_info)
     _human_readable_name = human_readable_name(_device_info)
     logger.info(f"Starting short self-test for {device} - {_human_readable_name}...")
-    subprocess.run(["smartctl", "--test=short", "--json", str(device)])
+    subprocess.run(["smartctl", "--test=short", str(device)], capture_output=True)
     logger.info(f"Polling results every {_poll_time / 60} minutes")
     while True:
         time.sleep(_poll_time)
@@ -162,6 +164,11 @@ def short(device: str) -> _smart_types.DeviceTestResult:
     )
 
 
+def _threaded_short(device: str, results_queue: Queue[_smart_types.DeviceTestResult]):
+    result = short(device)
+    results_queue.put(result)
+
+
 def _log_test_result(info_dict: dict):
     passed = test_passed(info_dict)
     _human_readable_name = human_readable_name(info_dict)
@@ -173,11 +180,27 @@ def _log_test_result(info_dict: dict):
 
 
 def short_all() -> _smart_types.TestResults:
+    """Run short tests for all devices in parallel"""
     tests_passed = True
     devices = scan_devices()
-    device_results = []
-    for device in devices:
-        result = short(device)
-        device_results.append(result)
-        tests_passed = tests_passed and result.passed
-    return _smart_types.TestResults(passed=tests_passed, results=tuple(device_results))
+    device_results_queue: Queue[_smart_types.DeviceTestResult] = Queue()
+    results: list[_smart_types.DeviceTestResult] = []
+
+    # Start tests in threads
+    threads = []
+    for d in devices:
+        t = threading.Thread(target=_threaded_short, args=(d, device_results_queue))
+        threads.append(t)
+        t.start()
+
+    # Wait for all threads to finish
+    for t in threads:
+        t.join()
+
+    # Convert from Queue to list
+    while device_results_queue:
+        res = device_results_queue.get()
+        results.append(res)
+        tests_passed = tests_passed and res.passed
+
+    return _smart_types.TestResults(passed=tests_passed, results=tuple(results))
