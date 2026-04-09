@@ -3,7 +3,7 @@ import subprocess
 import sys
 from typing import NamedTuple, Tuple, List
 
-from _discord import print_and_notify_discord
+from _discord import log_and_notify_discord
 from _load_settings import _load_settings
 
 try:
@@ -121,7 +121,7 @@ else:
         this_row = "\t".join(row)
         formatted = f"{formatted}{this_row}\n"
 formatted = f"```{formatted}```"
-print_and_notify_discord(
+log_and_notify_discord(
     f"{overall_status}\n\n{formatted}",
     has_alerts,
 )
