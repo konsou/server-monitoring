@@ -26,7 +26,7 @@ if __name__ == "__main__":
     logger.debug(f"{errors=}")
     logger.debug(f"Filtering ignore list {IGNORE}")
     filtered = []
-    for line in errors.stdout.split():
+    for line in errors.stdout.split("\n"):
         if not any(val.lower() in line.lower() for val in IGNORE):
             filtered.append(line)
     errors = "\n".join(filtered)
@@ -34,9 +34,11 @@ if __name__ == "__main__":
 
     if errors:
         discord_msg = f"dmesg has errors:\n\n{errors}"
+        logger.error(f"dmesg has errors ({len(errors)} lines)")
         _discord.notify_discord(discord_msg, is_error=True)
     else:
         discord_msg = "No dmesg errors"
+        logger.info(discord_msg)
         _discord.notify_discord(discord_msg)
 
     exit(bool(errors))
