@@ -34,7 +34,7 @@ if __name__ == "__main__":
 
     if errors:
         discord_msg = f"dmesg has errors:\n\n{errors}"
-        logger.error(f"dmesg has errors ({len(errors)} lines)")
+        logger.error(f"dmesg has errors ({len(errors.split('\n'))} lines)")
         _discord.notify_discord(discord_msg, is_error=True)
     else:
         discord_msg = "No dmesg errors"
