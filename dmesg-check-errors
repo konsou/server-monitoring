@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+# Checks dmesg for errors
+import subprocess
+
+import _discord
+import _logging
+
+logger = _logging.configure_logger(log_file="/var/log/dmesg-errors.log")
+
+IGNORE = (
+    "SGX disabled by BIOS",
+    "[Firmware Bug]: ACPI region does not cover the entire command/response buffer",
+)
+
+
+if __name__ == "__main__":
+    msg = "Checking dmesg for errors"
+    logger.info(msg)
+    _discord.notify_discord(msg)
+
+    errors = subprocess.run(
+        ["dmesg", "--ctime", "--level=err+"],
+        capture_output=True,
+        text=True,
+    )
+    logger.debug(f"{errors=}")
+    logger.debug(f"Filtering ignore list {IGNORE}")
+    filtered = []
+    for line in errors.stdout.split():
+        if not any(val.lower() in line.lower() for val in IGNORE):
+            filtered.append(line)
+    errors = "\n".join(filtered)
+    logger.debug(f"{errors=}")
+
+    if errors:
+        discord_msg = f"dmesg has errors:\n\n{errors}"
+        _discord.notify_discord(discord_msg, is_error=True)
+    else:
+        discord_msg = "No dmesg errors"
+        _discord.notify_discord(discord_msg)
+
+    exit(bool(errors))
