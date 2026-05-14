@@ -12,6 +12,9 @@ IGNORE = (
     "[Firmware Bug]: ACPI region does not cover the entire command/response buffer",
 )
 
+# Must use valid dmesg --since format
+TIME_SPAN = "1 day ago"
+
 
 if __name__ == "__main__":
     msg = "Checking dmesg for errors"
@@ -19,7 +22,7 @@ if __name__ == "__main__":
     _discord.notify_discord(msg)
 
     errors = subprocess.run(
-        ["dmesg", "--ctime", "--level=err+"],
+        ["dmesg", "--ctime", "--level=err+", f'--since="{TIME_SPAN}"'],
         capture_output=True,
         text=True,
     )
