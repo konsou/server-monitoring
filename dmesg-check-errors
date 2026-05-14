@@ -22,7 +22,7 @@ if __name__ == "__main__":
     _discord.notify_discord(msg)
 
     errors = subprocess.run(
-        ["dmesg", "--ctime", "--level=err+", f'--since="{TIME_SPAN}"'],
+        ["dmesg", "--ctime", "--level=err+", "--since", TIME_SPAN],
         capture_output=True,
         text=True,
     )
