@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 # Checks memory fragmentation
-import subprocess
+import logging
 
 import _discord
 import _logging
 
 logger = _logging.configure_logger(log_file="/var/log/memory-fragmentation.log")
+
+# These are just guesses at this point
+WARN_THRESHOLD = 0.2
+ERR_THRESHOLD = 0.5
 
 
 if __name__ == "__main__":
@@ -13,13 +17,37 @@ if __name__ == "__main__":
     logger.info(msg)
     _discord.notify_discord(msg)
 
-    result = subprocess.run(
-        ["cat", "/sys/kernel/debug/extfrag/extfrag_index"],
-        capture_output=True,
-        text=True,
-    )
-    logger.debug(f"{result=}")
+    with open("/sys/kernel/debug/extfrag/extfrag_index") as f:
+        extfrag_index = f.read()
+    logger.debug(f"{extfrag_index=}")
 
-    msg = f"memory fragmentation:\n\n{result.stdout}"
-    logger.info(msg)
-    _discord.notify_discord(msg)
+    worst_fragmentation_index = -1
+    results = []
+    for line in extfrag_index.splitlines():
+        values = [float(val) for val in line.split()[4:]]
+        worst_fragmentation_index = max(max(values), worst_fragmentation_index)
+        results.append(f"{' '.join(line.split()[:4])}: {values}")
+
+    warn_err_text = ""
+    exit_code = 0
+    log_level = logging.INFO
+    if worst_fragmentation_index >= ERR_THRESHOLD:
+        warn_err_text = "ERROR: "
+        exit_code = 1
+        log_level = logging.ERROR
+    elif worst_fragmentation_index >= WARN_THRESHOLD:
+        warn_err_text = "Warning: "
+        exit_code = 2
+        log_level = logging.WARNING
+
+    msg_log = (
+        f"Memory fragmentation {worst_fragmentation_index * 100}%\n\n"
+        f"{extfrag_index}"
+    )
+    msg_discord = (
+        f"{warn_err_text}Memory fragmentation {worst_fragmentation_index * 100}%\n\n```\n"
+        f"{extfrag_index}\n"
+        f"```"
+    )
+    logger.log(msg=msg_log, level=log_level)
+    _discord.notify_discord(msg_discord)
