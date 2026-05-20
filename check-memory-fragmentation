@@ -58,16 +58,14 @@ if __name__ == "__main__":
         exit_code = 2
         log_level = logging.WARNING
 
+    extra_info_log = f"\n\n{extfrag_index}" if exit_code > 0 else ""
+    extra_info_discord = f"\n```\n{extfrag_index}\n```" if exit_code > 0 else ""
+
     if not QUIET:
         msg_log = (
-            f"Memory fragmentation {worst_fragmentation_index * 100}%\n\n"
-            f"{extfrag_index}"
+            f"Memory fragmentation {worst_fragmentation_index * 100}%{extra_info_log}"
         )
-        msg_discord = (
-            f"{warn_err_text}Memory fragmentation {worst_fragmentation_index * 100}%\n\n```\n"
-            f"{extfrag_index}\n"
-            f"```"
-        )
+        msg_discord = f"{warn_err_text}Memory fragmentation {worst_fragmentation_index * 100}%{extra_info_discord}"
         logger.log(msg=msg_log, level=log_level)
         _discord.notify_discord(msg_discord, is_error=exit_code == 1)
 
