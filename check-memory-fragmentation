@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Checks memory fragmentation
+import argparse
 import logging
 import sys
 
@@ -13,10 +14,26 @@ WARN_THRESHOLD = 0.2
 ERR_THRESHOLD = 0.5
 
 
+def parse_args():
+    """
+    Parses command line arguments and returns the parsed namespace.
+    """
+    parser = argparse.ArgumentParser(description="Check memory fragmentation.")
+    parser.add_argument(
+        "-q", "--quiet", action="store_true", help="Suppress output messages"
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    msg = "Checking memory fragmentation"
-    logger.info(msg)
-    _discord.notify_discord(msg)
+    QUIET = parse_args().quiet
+    if QUIET:
+        logger.disabled = True
+
+    if not QUIET:
+        msg = "Checking memory fragmentation"
+        logger.info(msg)
+        _discord.notify_discord(msg)
 
     with open("/sys/kernel/debug/extfrag/extfrag_index") as f:
         extfrag_index = f.read()
@@ -41,16 +58,17 @@ if __name__ == "__main__":
         exit_code = 2
         log_level = logging.WARNING
 
-    msg_log = (
-        f"Memory fragmentation {worst_fragmentation_index * 100}%\n\n"
-        f"{extfrag_index}"
-    )
-    msg_discord = (
-        f"{warn_err_text}Memory fragmentation {worst_fragmentation_index * 100}%\n\n```\n"
-        f"{extfrag_index}\n"
-        f"```"
-    )
-    logger.log(msg=msg_log, level=log_level)
-    _discord.notify_discord(msg_discord, is_error=exit_code == 1)
+    if not QUIET:
+        msg_log = (
+            f"Memory fragmentation {worst_fragmentation_index * 100}%\n\n"
+            f"{extfrag_index}"
+        )
+        msg_discord = (
+            f"{warn_err_text}Memory fragmentation {worst_fragmentation_index * 100}%\n\n```\n"
+            f"{extfrag_index}\n"
+            f"```"
+        )
+        logger.log(msg=msg_log, level=log_level)
+        _discord.notify_discord(msg_discord, is_error=exit_code == 1)
 
     sys.exit(exit_code)
