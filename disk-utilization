@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+import json
+import subprocess
+
+result = subprocess.run(
+    ["iostat", "-d", "-t", "-x", "-o", "JSON"],
+    capture_output=True,
+    text=True,
+)
+parsed = json.loads(result.stdout)
+
+
+def print_aligned_table(data, headers=None):
+    """
+    Print data as an aligned table.
+
+    Args:
+        data: List of tuples/lists (e.g., [("sdg", "23.92"), ...])
+        headers: Optional list of header names for the columns
+    """
+    if not data:
+        return
+
+    headers_and_data = []
+    if headers:
+        headers_and_data.append(headers)
+    headers_and_data.extend(data)
+
+    col_widths = [max(len(str(item)) for item in column)
+                  for column in zip(*headers_and_data)]
+
+    # Add padding (optional, adjust as needed)
+    col_widths = [w + 2 for w in col_widths]
+
+    # Create format string: left-align first col, right-align others
+    fmt_parts = []
+    for i, width in enumerate(col_widths):
+        if i == 0:
+            fmt_parts.append(f"{{:<{width}}}")  # Left align device names
+        else:
+            fmt_parts.append(f"{{:>{width}}}")  # Right-align numbers
+
+    fmt = " ".join(fmt_parts)
+
+    # Print headers if provided
+    if headers:
+        print(fmt.format(*headers))
+        print("-" * sum(col_widths) + "-" * (len(headers) - 1))  # Separator line
+
+    # Print data rows
+    for row in data:
+        print(fmt.format(*row))
+
+
+device_utilization: list[tuple[str, str]] = []
+for dev in parsed["sysstat"]["hosts"][0]["statistics"][0]["disk"]:
+    dev_name = dev["disk_device"]
+    if dev_name.startswith("sd") or dev_name.startswith("nvme"):
+        device_utilization.append((dev_name, f"{dev['util']} %"))
+        #print(f"{dev_name} util: {dev['util']}%")
+
+print_aligned_table(device_utilization, headers=["disk", "utilization"])
