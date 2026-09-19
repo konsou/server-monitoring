@@ -2,17 +2,15 @@
 """Analyzes data gathered by disk-utilization-gatherer"""
 import datetime
 import gzip
-import json
 import os
 import statistics
-import subprocess
 import sys
 from dataclasses import dataclass
 
 import _logging
 import _discord
 
-logger = _logging.configure_logger(log_file="disk-utilization.log")
+logger = _logging.configure_logger(log_file="/var/log/disk-utilization.log")
 
 try:
     from tabulate import tabulate
@@ -24,7 +22,6 @@ except ImportError:
 
 # Try yesterday's logs first - then today's
 SOURCE_LOG_OPTIONS = (
-    "disk-utilization-stats.log",
     "/var/log/disk-utilization-stats.log.1",
     "/var/log/disk-utilization-stats.log.1.gz",
     "/var/log/disk-utilization-stats.log",
