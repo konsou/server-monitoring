@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
+"""Analyzes data gathered by disk-utilization-gatherer"""
+import datetime
+import gzip
 import json
+import os
+import statistics
 import subprocess
+import sys
+from dataclasses import dataclass
 
 import _logging
 import _discord
 
-logger = _logging.configure_logger(log_file="/var/log/disk-utilization.log")
+logger = _logging.configure_logger(log_file="disk-utilization.log")
 
 try:
     from tabulate import tabulate
@@ -15,22 +22,84 @@ except ImportError:
     logger.warning(f"tabulate not available, will not format output as table")
     TABULATE_AVAILABLE = False
 
+# Try yesterday's logs first - then today's
+SOURCE_LOG_OPTIONS = (
+    "disk-utilization-stats.log",
+    "/var/log/disk-utilization-stats.log.1",
+    "/var/log/disk-utilization-stats.log.1.gz",
+    "/var/log/disk-utilization-stats.log",
+)
+
+@dataclass
+class DeviceStats:
+    name: str
+    timestamps: list[float|int]
+    util_values: list[float|int]
+
+    def max_util(self) -> float:
+        return max(self.util_values)
+    def min_util(self) -> float:
+        return min(self.util_values)
+    def avg_util(self) -> float:
+        return statistics.mean(self.util_values)
+    def median_util(self) -> float:
+        return statistics.median(self.util_values)
+    def max_util_and_timestamp(self) -> tuple[float, float]:
+        max_value = self.max_util()
+        max_index = self.util_values.index(max_value)
+        return max_value, self.timestamps[max_index]
+    def min_util_and_timestamp(self) -> tuple[float, float]:
+        min_value = self.min_util()
+        return min_value, self.timestamps[self.util_values.index(min_value)]
 
 def main():
-    result = subprocess.run(
-        ["iostat", "-d", "-t", "-x", "-o", "JSON"],
-        capture_output=True,
-        text=True,
-    )
-    parsed = json.loads(result.stdout)
+    source_log = ""
+    for f in SOURCE_LOG_OPTIONS:
+        if os.path.exists(f):
+            source_log = f
+            break
+    if not source_log:
+        logger.error(f"No source log file found, looking for: {SOURCE_LOG_OPTIONS}")
+        sys.exit(1)
 
-    device_utilization: list[tuple[str, str]] = []
-    for dev in parsed["sysstat"]["hosts"][0]["statistics"][0]["disk"]:
-        dev_name = dev["disk_device"]
-        if is_actual_disk(dev_name):
-            device_utilization.append((dev_name, f"{dev['util']} %"))
-            # Easily parseable format for logs
-            logger.info(f"{dev_name},{dev['util']}")
+    logger.info(f"Reading from {source_log}")
+    if source_log.endswith(".gz"):
+        log_contents = gzip.open(source_log, "rt").read()
+    else:
+        log_contents = open(source_log, "r").read()
+
+    earliest_timestamp = float('inf')
+    latest_timestamp = 0
+    datapoints = 0
+    parsed_stats: dict[str, DeviceStats] = {}
+    for line in log_contents.splitlines():
+        try:
+            timestamp, name, util_value = line.split(",")
+        except ValueError:
+            continue
+        if not name in parsed_stats:
+            parsed_stats[name] = DeviceStats(name=name, timestamps=[], util_values=[])
+        datapoints += 1
+        timestamp = float(timestamp)
+        earliest_timestamp = min(earliest_timestamp, timestamp)
+        latest_timestamp = max(latest_timestamp, timestamp)
+        parsed_stats[name].timestamps.append(timestamp)
+        parsed_stats[name].util_values.append(float(util_value))
+
+    logger.info(f"Parsed {datapoints} datapoints")
+    logger.info(f"Data from {timestamp_as_string(earliest_timestamp)} to {timestamp_as_string(latest_timestamp)}")
+    logger.info(f"Disk utilization stats:")
+    for device, stats in parsed_stats.items():
+        max_util, max_util_timestamp = stats.max_util_and_timestamp()
+        logger.info(f"-- {device} --")
+        logger.info(f"Min:    {stats.min_util():.2f} %")
+        logger.info(f"Max:    {max_util:.2f} % (at {timestamp_as_string(max_util_timestamp)})")
+        logger.info(f"Avg:    {stats.avg_util():.2f} %")
+        logger.info(f"Median: {stats.median_util():.2f} %")
+    sys.exit(0)
+
+    # TODO: nicer device info
+    # TODO: discord message
 
     # Human-readable format for discord msg
     if TABULATE_AVAILABLE:
@@ -50,6 +119,8 @@ def is_actual_disk(device: str) -> bool:
     """iostat contains loop devices, we don't care about those"""
     return device.startswith("sd") or device.startswith("nvme")
 
+def timestamp_as_string(timestamp: float) -> str:
+    return datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
 
 if __name__ == "__main__":
     main()
