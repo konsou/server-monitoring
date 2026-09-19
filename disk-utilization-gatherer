@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""Set this to run in the background with cron"""
+import datetime
+import json
+import subprocess
+
+# Not using logger here - only ultra-basic output needed
+# REMEMBER TO SET LOGROTATE - WILL GENERATE LOTS OF LOGS
+LOG_FILE = "/var/log/disk-utilization-stats.log"
+
+
+def main():
+    result = subprocess.run(
+        ["iostat", "-d", "-t", "-x", "-o", "JSON"],
+        capture_output=True,
+        text=True,
+    )
+    parsed = json.loads(result.stdout)
+
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        for dev in parsed["sysstat"]["hosts"][0]["statistics"][0]["disk"]:
+            dev_name = dev["disk_device"]
+            if is_actual_disk(dev_name):
+                msg = f"{datetime.datetime.now().timestamp()},{dev_name},{dev['util']}"
+                print(msg)
+                f.write(f"{msg}\n")
+
+
+def is_actual_disk(device: str) -> bool:
+    """iostat contains loop devices, we don't care about those"""
+    return device.startswith("sd") or device.startswith("nvme")
+
+
+if __name__ == "__main__":
+    main()
