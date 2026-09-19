@@ -7,6 +7,14 @@ import _discord
 
 logger = _logging.configure_logger(log_file="/var/log/disk-utilization.log")
 
+try:
+    from tabulate import tabulate
+
+    TABULATE_AVAILABLE = True
+except ImportError:
+    logger.warning(f"tabulate not available, will not format output as table")
+    TABULATE_AVAILABLE = False
+
 
 def main():
     result = subprocess.run(
@@ -25,58 +33,22 @@ def main():
             logger.info(f"{dev_name},{dev['util']}")
 
     # Human-readable format for discord msg
-    aligned_table = align_table(device_utilization, headers=["disk", "utilization"])
-    discord_msg = f"```\n{aligned_table}\n```"
+    if TABULATE_AVAILABLE:
+        formatted = tabulate(
+                device_utilization, headers=("disk", "utilization"), colalign=("left", "right")
+            )
+        discord_msg = f"```\n{formatted}\n```"
+    else:
+        lines: list[str] = ["disk\tutilization", "----\t-----------"]
+        for dev in device_utilization:
+            lines.append(f"{dev[0]}\t{dev[1]}")
+        discord_msg = f"```{'\n'.join(lines)}\n```"
     _discord.notify_discord(discord_msg)
 
 
 def is_actual_disk(device: str) -> bool:
     """iostat contains loop devices, we don't care about those"""
     return device.startswith("sd") or device.startswith("nvme")
-
-
-def align_table(data, headers=None) -> str:
-    """
-    Print data as an aligned table.
-
-    Args:
-        data: List of tuples/lists (e.g., [("sdg", "23.92"), ...])
-        headers: Optional list of header names for the columns
-    """
-    if not data:
-        return ""
-
-    headers_and_data = []
-    if headers:
-        headers_and_data.append(headers)
-    headers_and_data.extend(data)
-
-    col_widths = [
-        max(len(str(item)) for item in column) for column in zip(*headers_and_data)
-    ]
-
-    # Add padding
-    col_widths = [w + 2 for w in col_widths]
-
-    # Create format string: left-align first col, right-align others
-    fmt_parts = []
-    for i, width in enumerate(col_widths):
-        if i == 0:
-            fmt_parts.append(f"{{:<{width}}}")  # Left align device names
-        else:
-            fmt_parts.append(f"{{:>{width}}}")  # Right-align numbers
-
-    fmt = " ".join(fmt_parts)
-
-    output = []
-    if headers:
-        output.append(fmt.format(*headers))
-        # Separator line
-        output.append("-" * sum(col_widths) + "-" * (len(headers) - 1))
-
-    for row in data:
-        output.append(fmt.format(*row))
-    return "\n".join(output)
 
 
 if __name__ == "__main__":
