@@ -2,15 +2,40 @@
 import json
 import subprocess
 
-result = subprocess.run(
-    ["iostat", "-d", "-t", "-x", "-o", "JSON"],
-    capture_output=True,
-    text=True,
-)
-parsed = json.loads(result.stdout)
+import _logging
+import _discord
+
+logger = _logging.configure_logger(log_file="/var/log/disk-utilization.log")
 
 
-def print_aligned_table(data, headers=None):
+def main():
+    result = subprocess.run(
+        ["iostat", "-d", "-t", "-x", "-o", "JSON"],
+        capture_output=True,
+        text=True,
+    )
+    parsed = json.loads(result.stdout)
+
+    device_utilization: list[tuple[str, str]] = []
+    for dev in parsed["sysstat"]["hosts"][0]["statistics"][0]["disk"]:
+        dev_name = dev["disk_device"]
+        if is_actual_disk(dev_name):
+            device_utilization.append((dev_name, f"{dev['util']} %"))
+            # Easily parseable format for logs
+            logger.info(f"{dev_name},{dev['util']}")
+
+    # Human-readable format for discord msg
+    aligned_table = align_table(device_utilization, headers=["disk", "utilization"])
+    discord_msg = f"```\n{aligned_table}\n```"
+    _discord.notify_discord(discord_msg)
+
+
+def is_actual_disk(device: str) -> bool:
+    """iostat contains loop devices, we don't care about those"""
+    return device.startswith("sd") or device.startswith("nvme")
+
+
+def align_table(data, headers=None) -> str:
     """
     Print data as an aligned table.
 
@@ -19,17 +44,18 @@ def print_aligned_table(data, headers=None):
         headers: Optional list of header names for the columns
     """
     if not data:
-        return
+        return ""
 
     headers_and_data = []
     if headers:
         headers_and_data.append(headers)
     headers_and_data.extend(data)
 
-    col_widths = [max(len(str(item)) for item in column)
-                  for column in zip(*headers_and_data)]
+    col_widths = [
+        max(len(str(item)) for item in column) for column in zip(*headers_and_data)
+    ]
 
-    # Add padding (optional, adjust as needed)
+    # Add padding
     col_widths = [w + 2 for w in col_widths]
 
     # Create format string: left-align first col, right-align others
@@ -42,21 +68,16 @@ def print_aligned_table(data, headers=None):
 
     fmt = " ".join(fmt_parts)
 
-    # Print headers if provided
+    output = []
     if headers:
-        print(fmt.format(*headers))
-        print("-" * sum(col_widths) + "-" * (len(headers) - 1))  # Separator line
+        output.append(fmt.format(*headers))
+        # Separator line
+        output.append("-" * sum(col_widths) + "-" * (len(headers) - 1))
 
-    # Print data rows
     for row in data:
-        print(fmt.format(*row))
+        output.append(fmt.format(*row))
+    return "\n".join(output)
 
 
-device_utilization: list[tuple[str, str]] = []
-for dev in parsed["sysstat"]["hosts"][0]["statistics"][0]["disk"]:
-    dev_name = dev["disk_device"]
-    if dev_name.startswith("sd") or dev_name.startswith("nvme"):
-        device_utilization.append((dev_name, f"{dev['util']} %"))
-        #print(f"{dev_name} util: {dev['util']}%")
-
-print_aligned_table(device_utilization, headers=["disk", "utilization"])
+if __name__ == "__main__":
+    main()
