@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Analyzes data gathered by disk-utilization-gatherer"""
+
 import datetime
 import gzip
 import os
@@ -28,27 +29,34 @@ SOURCE_LOG_OPTIONS = (
     "/var/log/disk-utilization-stats.log",
 )
 
+
 @dataclass
 class DeviceStats:
     name: str
-    timestamps: list[float|int]
-    util_values: list[float|int]
+    timestamps: list[float | int]
+    util_values: list[float | int]
 
     def max_util(self) -> float:
         return max(self.util_values)
+
     def min_util(self) -> float:
         return min(self.util_values)
+
     def avg_util(self) -> float:
         return statistics.mean(self.util_values)
+
     def median_util(self) -> float:
         return statistics.median(self.util_values)
+
     def max_util_and_timestamp(self) -> tuple[float, float]:
         max_value = self.max_util()
         max_index = self.util_values.index(max_value)
         return max_value, self.timestamps[max_index]
+
     def min_util_and_timestamp(self) -> tuple[float, float]:
         min_value = self.min_util()
         return min_value, self.timestamps[self.util_values.index(min_value)]
+
 
 def main():
     source_log = ""
@@ -66,7 +74,7 @@ def main():
     else:
         log_contents = open(source_log, "r").read()
 
-    earliest_timestamp = float('inf')
+    earliest_timestamp = float("inf")
     latest_timestamp = 0
     datapoints = 0
     parsed_stats: dict[str, DeviceStats] = {}
@@ -85,44 +93,49 @@ def main():
         parsed_stats[name].util_values.append(float(util_value))
 
     logger.info(f"Parsed {datapoints} datapoints")
-    logger.info(f"Data from {timestamp_as_string(earliest_timestamp)} to {timestamp_as_string(latest_timestamp)}")
+    logger.info(
+        f"Data from {timestamp_as_string(earliest_timestamp)} to {timestamp_as_string(latest_timestamp)}"
+    )
     logger.info(f"Disk utilization stats:")
+    discord_msg = [
+        f"Disk utilization stats from {timestamp_as_string(earliest_timestamp)} to {timestamp_as_string(latest_timestamp)} ({datapoints} datapoints)",
+        "```",
+    ]
+
     for device, stats in parsed_stats.items():
         max_util, max_util_timestamp = stats.max_util_and_timestamp()
         _disk_name = device + " - " + disk_name(f"/dev/{device}")
         logger.info(f"{_disk_name}")
+        discord_msg.append(f"{_disk_name}")
         logger.info(f"Min:    {stats.min_util():.2f} %")
-        logger.info(f"Max:    {max_util:.2f} % (at {timestamp_as_string(max_util_timestamp)})")
+        discord_msg.append(f"Min:    {stats.min_util():.2f} %")
+        logger.info(
+            f"Max:    {max_util:.2f} % (at {timestamp_as_string(max_util_timestamp)})"
+        )
+        discord_msg.append(
+            f"Max:    {max_util:.2f} % (at {timestamp_as_string(max_util_timestamp)})"
+        )
         logger.info(f"Avg:    {stats.avg_util():.2f} %")
+        discord_msg.append(f"Avg:    {stats.avg_util():.2f} %")
         logger.info(f"Median: {stats.median_util():.2f} %")
-    sys.exit(0)
+        discord_msg.append(f"Median: {stats.median_util():.2f} %")
 
-    # TODO: nicer device info
-    # TODO: discord message
-
-    # Human-readable format for discord msg
-    if TABULATE_AVAILABLE:
-        formatted = tabulate(
-                device_utilization, headers=("disk", "utilization"), colalign=("left", "right")
-            )
-        discord_msg = f"```\n{formatted}\n```"
-    else:
-        lines: list[str] = ["disk\tutilization", "----\t-----------"]
-        for dev in device_utilization:
-            lines.append(f"{dev[0]}\t{dev[1]}")
-        discord_msg = f"```{'\n'.join(lines)}\n```"
-    _discord.notify_discord(discord_msg)
+    discord_msg.append("```")
+    _discord.notify_discord("\n".join(discord_msg))
 
 
 def is_actual_disk(device: str) -> bool:
     """iostat contains loop devices, we don't care about those"""
     return device.startswith("sd") or device.startswith("nvme")
 
+
 def timestamp_as_string(timestamp: float) -> str:
-    return datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+    return datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+
 
 def disk_name(device: str) -> str:
     return _smart.human_readable_name(_smart.device_info(device))
+
 
 if __name__ == "__main__":
     main()
