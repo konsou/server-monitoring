@@ -89,7 +89,8 @@ def main():
     logger.info(f"Disk utilization stats:")
     for device, stats in parsed_stats.items():
         max_util, max_util_timestamp = stats.max_util_and_timestamp()
-        logger.info(f"-- {disk_name(device)} --")
+        _disk_name = device + " - " + disk_name(f"/dev/{device}")
+        logger.info(f"{_disk_name}")
         logger.info(f"Min:    {stats.min_util():.2f} %")
         logger.info(f"Max:    {max_util:.2f} % (at {timestamp_as_string(max_util_timestamp)})")
         logger.info(f"Avg:    {stats.avg_util():.2f} %")
