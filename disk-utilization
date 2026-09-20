@@ -3,6 +3,7 @@
 
 import datetime
 import gzip
+import logging
 import os
 import statistics
 import sys
@@ -57,6 +58,14 @@ class DeviceStats:
         min_value = self.min_util()
         return min_value, self.timestamps[self.util_values.index(min_value)]
 
+    def status_warning(self) -> bool:
+        return (
+            self.max_util() >= 99 or self.avg_util() >= 50 or self.median_util() >= 50
+        )
+
+    def status_critical(self) -> bool:
+        return self.avg_util() >= 95 or self.median_util() >= 95
+
 
 def main():
     source_log = ""
@@ -101,27 +110,48 @@ def main():
         f"Disk utilization stats from {timestamp_as_string(earliest_timestamp)} to {timestamp_as_string(latest_timestamp)} ({datapoints} datapoints)",
         "```",
     ]
-
+    warning_devices = []
+    critical_devices = []
+    first_device = True
     for device, stats in parsed_stats.items():
+        if not first_device:
+            discord_msg.append("")
+        first_device = False
         max_util, max_util_timestamp = stats.max_util_and_timestamp()
         _disk_name = device + " - " + disk_name(f"/dev/{device}")
-        logger.info(f"{_disk_name}")
+        log_level = logging.INFO
+        if stats.status_critical():
+            critical_devices.append(_disk_name)
+            _disk_name = f"{_disk_name} *CRITICAL*"
+            log_level = logging.ERROR
+        elif stats.status_warning():
+            warning_devices.append(_disk_name)
+            _disk_name = f"{_disk_name} WARNING"
+            log_level = logging.WARNING
+        logger.log(log_level, f"{_disk_name}")
         discord_msg.append(f"{_disk_name}")
-        logger.info(f"Min:    {stats.min_util():.2f} %")
+        logger.log(log_level, f"Min:    {stats.min_util():.2f} %")
         discord_msg.append(f"Min:    {stats.min_util():.2f} %")
-        logger.info(
-            f"Max:    {max_util:.2f} % (at {timestamp_as_string(max_util_timestamp)})"
+        logger.log(
+            log_level,
+            f"Max:    {max_util:.2f} % (at {timestamp_as_string(max_util_timestamp)})",
         )
         discord_msg.append(
             f"Max:    {max_util:.2f} % (at {timestamp_as_string(max_util_timestamp)})"
         )
-        logger.info(f"Avg:    {stats.avg_util():.2f} %")
+        logger.log(log_level, f"Avg:    {stats.avg_util():.2f} %")
         discord_msg.append(f"Avg:    {stats.avg_util():.2f} %")
-        logger.info(f"Median: {stats.median_util():.2f} %")
+        logger.log(log_level, f"Median: {stats.median_util():.2f} %")
         discord_msg.append(f"Median: {stats.median_util():.2f} %")
 
     discord_msg.append("```")
-    _discord.notify_discord("\n".join(discord_msg))
+    if critical_devices:
+        discord_msg.insert(1, f"**CRITICAL DEVICES**: {", ".join(critical_devices)}")
+    if warning_devices:
+        discord_msg.insert(1, f"**WARNING DEVICES**: {", ".join(warning_devices)}")
+    _discord.notify_discord(
+        "\n".join(discord_msg), is_error=bool(warning_devices or critical_devices)
+    )
 
 
 def is_actual_disk(device: str) -> bool:
