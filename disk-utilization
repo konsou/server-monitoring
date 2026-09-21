@@ -170,8 +170,10 @@ def disk_name(device: str) -> str:
 def first_mount_point(device: str) -> str:
     if not device.startswith("/dev/"):
         device = f"/dev/{device}"
-    if not device[-1].isnumeric():
+    if device.startswith("/dev/sd") and not device[-1].isnumeric():
         device = f"{device}1"
+    if "nvme" in device and not device[-2:] == "p1":
+        device = f"{device}p1"
     output = subprocess.check_output(["findmnt", "--json", "--source", device])
     return json.loads(output)["filesystems"][0]["target"]
 
