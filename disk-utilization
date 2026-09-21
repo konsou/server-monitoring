@@ -170,12 +170,29 @@ def disk_name(device: str) -> str:
 def first_mount_point(device: str) -> str:
     if not device.startswith("/dev/"):
         device = f"/dev/{device}"
-    if device.startswith("/dev/sd") and not device[-1].isnumeric():
-        device = f"{device}1"
-    if "nvme" in device and not device[-2:] == "p1":
-        device = f"{device}p1"
-    output = subprocess.check_output(["findmnt", "--json", "--source", device])
-    return json.loads(output)["filesystems"][0]["target"]
+    # Scan each partition until a mount point is found
+    partitions = (
+        subprocess.check_output(
+            ["partx", "--noheadings", "--output", "nr", "--show", device]
+        )
+        .decode("utf-8")
+        .split()
+    )
+    for partition_number in partitions:
+        if device.startswith("/dev/sd"):
+            partition = f"{device}{partition_number}"
+        elif "nvme" in device:
+            partition = f"{device}p{partition_number}"
+        else:
+            return "(unknown device)"
+        try:
+            output = subprocess.check_output(
+                ["findmnt", "--json", "--source", partition]
+            ).decode("utf-8")
+            return json.loads(output)["filesystems"][0]["target"]
+        except subprocess.CalledProcessError:
+            continue
+    return "(unknown device)"
 
 
 if __name__ == "__main__":
