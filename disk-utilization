@@ -3,9 +3,11 @@
 
 import datetime
 import gzip
+import json
 import logging
 import os
 import statistics
+import subprocess
 import sys
 from dataclasses import dataclass
 
@@ -131,18 +133,13 @@ def main():
         logger.log(log_level, f"{_disk_name}")
         discord_msg.append(f"{_disk_name}")
         logger.log(log_level, f"Min:    {stats.min_util():.2f} %")
-        discord_msg.append(f"Min:    {stats.min_util():.2f} %")
         logger.log(
             log_level,
             f"Max:    {max_util:.2f} % (at {timestamp_as_string(max_util_timestamp)})",
         )
-        discord_msg.append(
-            f"Max:    {max_util:.2f} % (at {timestamp_as_string(max_util_timestamp)})"
-        )
+        discord_msg.append(f"avg {stats.avg_util():.2f} %, max {max_util:.2f} %")
         logger.log(log_level, f"Avg:    {stats.avg_util():.2f} %")
-        discord_msg.append(f"Avg:    {stats.avg_util():.2f} %")
         logger.log(log_level, f"Median: {stats.median_util():.2f} %")
-        discord_msg.append(f"Median: {stats.median_util():.2f} %")
 
     discord_msg.append("```")
     if critical_devices:
@@ -164,7 +161,19 @@ def timestamp_as_string(timestamp: float) -> str:
 
 
 def disk_name(device: str) -> str:
-    return _smart.human_readable_name(_smart.device_info(device))
+    return (
+        _smart.human_readable_name(_smart.device_info(device))
+        + f" - {first_mount_point(device)}"
+    )
+
+
+def first_mount_point(device: str) -> str:
+    if not device.startswith("/dev/"):
+        device = f"/dev/{device}"
+    if not device[-1].isnumeric():
+        device = f"{device}1"
+    output = subprocess.check_output(["findmnt", "--json", "--source", device])
+    return json.loads(output)["filesystems"][0]["target"]
 
 
 if __name__ == "__main__":
