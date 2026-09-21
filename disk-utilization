@@ -167,18 +167,24 @@ def disk_name(device: str) -> str:
     )
 
 
+ZFS_PARTITION_TYPE = "6a898cc3-1dd2-11b2-99a6-080020736631"
+
+
 def first_mount_point(device: str) -> str:
     if not device.startswith("/dev/"):
         device = f"/dev/{device}"
     # Scan each partition until a mount point is found
     partitions = (
         subprocess.check_output(
-            ["partx", "--noheadings", "--output", "nr", "--show", device]
+            ["partx", "--noheadings", "--output", "nr,type", "--show", device]
         )
         .decode("utf-8")
-        .split()
+        .split("\n")
     )
-    for partition_number in partitions:
+    for p in partitions:
+        partition_number, partition_type = p.strip().split()
+        if partition_type.strip() == ZFS_PARTITION_TYPE:
+            return "zfs"
         if device.startswith("/dev/sd"):
             partition = f"{device}{partition_number}"
         elif "nvme" in device:
@@ -192,7 +198,7 @@ def first_mount_point(device: str) -> str:
             return json.loads(output)["filesystems"][0]["target"]
         except subprocess.CalledProcessError:
             continue
-    return "(unknown device)"
+    return "(no mount found)"
 
 
 if __name__ == "__main__":
