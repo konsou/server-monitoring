@@ -116,6 +116,8 @@ def main():
     critical_devices = []
     first_device = True
     for device, stats in parsed_stats.items():
+        if not device:
+            continue
         if not first_device:
             discord_msg.append("")
         first_device = False
@@ -174,15 +176,22 @@ def first_mount_point(device: str) -> str:
     if not device.startswith("/dev/"):
         device = f"/dev/{device}"
     # Scan each partition until a mount point is found
-    partitions = (
-        subprocess.check_output(
-            ["partx", "--noheadings", "--output", "nr,type", "--show", device]
+    try:
+        partitions = (
+            subprocess.check_output(
+                ["partx", "--noheadings", "--output", "nr,type", "--show", device]
+            )
+            .decode("utf-8")
+            .split("\n")
         )
-        .decode("utf-8")
-        .split("\n")
-    )
+    except subprocess.CalledProcessError:
+        return "(no partitions found)"
+    
     for p in partitions:
-        partition_number, partition_type = p.strip().split()
+        p_stripped = p.strip().split()
+        if not p_stripped:
+            continue
+        partition_number, partition_type = p_stripped
         if partition_type.strip() == ZFS_PARTITION_TYPE:
             return "zfs"
         if device.startswith("/dev/sd"):
