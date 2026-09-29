@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Analyzes data gathered by disk-utilization-gatherer"""
-
+"""Analyze per-disk utilization data gathered by disk-utilization-gatherer."""
 import datetime
 import gzip
 import json
@@ -9,35 +8,43 @@ import os
 import statistics
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-import _logging
 import _discord
+import _logging
 import _smart
 
-logger = _logging.configure_logger(log_file="/var/log/disk-utilization.log")
+logger = logging.getLogger("server-monitoring")
+
+
+def _setup_logging() -> None:
+    """Configure the module logger, deferring side effects until runtime."""
+    global logger
+    configured = _logging.configure_logger(log_file="/var/log/disk-utilization.log")
+    logger = configured
 
 try:
     from tabulate import tabulate
 
     TABULATE_AVAILABLE = True
 except ImportError:
-    logger.warning(f"tabulate not available, will not format output as table")
+    logger.warning("tabulate not available, will not format output as table")
     TABULATE_AVAILABLE = False
 
-# Try yesterday's logs first - then today's
+# Prefer yesterday's logs first, then today's. Overridable for testing.
+BASE_LOG_DIR = os.environ.get("DISK_UTILIZATION_LOG_DIR", "/var/log")
 SOURCE_LOG_OPTIONS = (
-    "/var/log/disk-utilization-stats.log.1",
-    "/var/log/disk-utilization-stats.log.1.gz",
-    "/var/log/disk-utilization-stats.log",
+    f"{BASE_LOG_DIR}/disk-utilization-stats.log.1",
+    f"{BASE_LOG_DIR}/disk-utilization-stats.log.1.gz",
+    f"{BASE_LOG_DIR}/disk-utilization-stats.log",
 )
 
 
 @dataclass
 class DeviceStats:
     name: str
-    timestamps: list[float | int]
-    util_values: list[float | int]
+    timestamps: list[float | int] = field(default_factory=list)
+    util_values: list[float | int] = field(default_factory=list)
 
     def max_util(self) -> float:
         return max(self.util_values)
@@ -69,7 +76,25 @@ class DeviceStats:
         return self.avg_util() >= 95 or self.median_util() >= 95
 
 
-def main():
+def parse_log(log_contents: str) -> dict[str, DeviceStats]:
+    """Parse comma-separated `timestamp,name,util` lines into DeviceStats."""
+    parsed_stats: dict[str, DeviceStats] = {}
+    for line in log_contents.splitlines():
+        try:
+            timestamp, name, util_value = line.split(",")
+        except ValueError:
+            continue
+        if not name:
+            continue
+        if name not in parsed_stats:
+            parsed_stats[name] = DeviceStats(name=name)
+        parsed_stats[name].timestamps.append(float(timestamp))
+        parsed_stats[name].util_values.append(float(util_value))
+    return parsed_stats
+
+
+def main() -> None:
+    _setup_logging()
     source_log = ""
     for f in SOURCE_LOG_OPTIONS:
         if os.path.exists(f):
@@ -81,33 +106,27 @@ def main():
 
     logger.info(f"Reading from {source_log}")
     if source_log.endswith(".gz"):
-        log_contents = gzip.open(source_log, "rt").read()
+        with gzip.open(source_log, "rt") as f:
+            log_contents = f.read()
     else:
-        log_contents = open(source_log, "r").read()
+        with open(source_log, "r") as f:
+            log_contents = f.read()
 
-    earliest_timestamp = float("inf")
-    latest_timestamp = 0
-    datapoints = 0
-    parsed_stats: dict[str, DeviceStats] = {}
-    for line in log_contents.splitlines():
-        try:
-            timestamp, name, util_value = line.split(",")
-        except ValueError:
-            continue
-        if not name in parsed_stats:
-            parsed_stats[name] = DeviceStats(name=name, timestamps=[], util_values=[])
-        datapoints += 1
-        timestamp = float(timestamp)
-        earliest_timestamp = min(earliest_timestamp, timestamp)
-        latest_timestamp = max(latest_timestamp, timestamp)
-        parsed_stats[name].timestamps.append(timestamp)
-        parsed_stats[name].util_values.append(float(util_value))
+    parsed_stats = parse_log(log_contents)
+
+    datapoints = sum(len(s.util_values) for s in parsed_stats.values())
+    if parsed_stats:
+        all_timestamps = [t for s in parsed_stats.values() for t in s.timestamps]
+        earliest_timestamp = min(all_timestamps)
+        latest_timestamp = max(all_timestamps)
+    else:
+        earliest_timestamp = latest_timestamp = 0
 
     logger.info(f"Parsed {datapoints} datapoints")
     logger.info(
         f"Data from {timestamp_as_string(earliest_timestamp)} to {timestamp_as_string(latest_timestamp)}"
     )
-    logger.info(f"Disk utilization stats:")
+    logger.info("Disk utilization stats:")
     discord_msg = [
         f"Disk utilization stats from {timestamp_as_string(earliest_timestamp)} to {timestamp_as_string(latest_timestamp)} ({datapoints} datapoints)",
         "```",
@@ -116,8 +135,6 @@ def main():
     critical_devices = []
     first_device = True
     for device, stats in parsed_stats.items():
-        if not device:
-            continue
         if not first_device:
             discord_msg.append("")
         first_device = False
@@ -132,8 +149,8 @@ def main():
             warning_devices.append(_disk_name)
             _disk_name = f"{_disk_name} WARNING"
             log_level = logging.WARNING
-        logger.log(log_level, f"{_disk_name}")
-        discord_msg.append(f"{_disk_name}")
+        logger.log(log_level, _disk_name)
+        discord_msg.append(_disk_name)
         logger.log(log_level, f"Min:    {stats.min_util():.2f} %")
         logger.log(
             log_level,
@@ -145,9 +162,9 @@ def main():
 
     discord_msg.append("```")
     if critical_devices:
-        discord_msg.insert(1, f"**CRITICAL DEVICES**: {", ".join(critical_devices)}")
+        discord_msg.insert(1, f"**CRITICAL DEVICES**: {', '.join(critical_devices)}")
     if warning_devices:
-        discord_msg.insert(1, f"**WARNING DEVICES**: {", ".join(warning_devices)}")
+        discord_msg.insert(1, f"**WARNING DEVICES**: {', '.join(warning_devices)}")
     _discord.notify_discord(
         "\n".join(discord_msg), is_error=bool(warning_devices or critical_devices)
     )
@@ -182,11 +199,11 @@ def first_mount_point(device: str) -> str:
                 ["partx", "--noheadings", "--output", "nr,type", "--show", device]
             )
             .decode("utf-8")
-            .split("\n")
+            .splitlines()
         )
     except subprocess.CalledProcessError:
         return "(no partitions found)"
-    
+
     for p in partitions:
         p_stripped = p.strip().split()
         if not p_stripped:

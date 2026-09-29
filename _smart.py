@@ -139,7 +139,9 @@ def short(device: str) -> _smart_types.DeviceTestResult:
     _poll_time = poll_time(_device_info)
     _human_readable_name = human_readable_name(_device_info)
     logger.info(f"Starting short self-test for {device} - {_human_readable_name}...")
-    subprocess.run(["smartctl", "--test=short", str(device)], capture_output=True)
+    subprocess.run(
+        ["smartctl", "--test=short", "--json", str(device)], capture_output=True
+    )
     logger.info(f"Polling {device} results every {_poll_time / 60} minutes")
     while True:
         time.sleep(_poll_time)
