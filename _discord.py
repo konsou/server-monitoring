@@ -14,7 +14,7 @@ def notify_discord(message: str, is_error: bool = False):
         notify_result = subprocess.run(notify_args, capture_output=True, text=True)
     except FileNotFoundError:
         logger.error(
-            f"notify-discord executable not found in path, can't send discord notifications"
+            "notify-discord executable not found in path, can't send discord notifications"
         )
         return
 

@@ -8,15 +8,21 @@ class Settings(NamedTuple):
     exclude_paths: tuple[str, ...] = ()
 
 
-def _load_settings() -> Settings:
-    script_dir = os.path.dirname(os.path.realpath(__file__))
-    settings_full_path = os.path.join(script_dir, "settings.json")
+def _load_settings(settings_path: str | None = None) -> Settings:
+    """Load settings from settings.json next to this module.
 
-    if not os.path.isfile(settings_full_path):
-        print(f"{settings_full_path} not found, using defaults")
+    If `settings_path` is given (e.g. from a test), use it directly instead.
+    Returns defaults when no settings file exists.
+    """
+    if settings_path is None:
+        script_dir = os.path.dirname(os.path.realpath(__file__))
+        settings_path = os.path.join(script_dir, "settings.json")
+
+    if not os.path.isfile(settings_path):
+        print(f"{settings_path} not found, using defaults")
         return Settings()
 
-    with open(settings_full_path, encoding="utf-8") as settings_file:
+    with open(settings_path, encoding="utf-8") as settings_file:
         settings_json = json.load(settings_file)
 
     return Settings(

@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
+"""Alert when any mounted filesystem or zpool is running low on free space."""
 import subprocess
 import sys
-from typing import NamedTuple, Tuple, List
+from typing import List, NamedTuple, Optional, Tuple
 
 from _discord import log_and_notify_discord
-from _load_settings import _load_settings
+from _load_settings import Settings, _load_settings
 
 try:
     from tabulate import tabulate
 
     TABULATE_AVAILABLE = True
 except ImportError:
-    print(f"WARNING: tabulate not available, will not format output as table")
+    print("WARNING: tabulate not available, will not format output as table")
     TABULATE_AVAILABLE = False
 
 
@@ -22,18 +23,28 @@ class DeviceEntry(NamedTuple):
     ignored: bool = False
 
 
-GB = 1024 * 1024
+class FreeSpaceReport(NamedTuple):
+    """Result of evaluating a set of devices against alert limits."""
+
+    overall_status: str
+    low_space_devices: Tuple[str, ...]
+    rows: Tuple[Tuple[Optional[str], ...], ...]
+    has_alerts: bool
+
+
+GB = 1024**3  # bytes in a gibibyte
 DEFAULT_ALERT_LIMIT = 50 * GB
 IGNORED = -1
-SETTINGS = _load_settings()
 
 
-def _parse_and_filter_entries(entries: List[str]) -> Tuple[DeviceEntry, ...]:
+def _parse_and_filter_entries(
+    entries: List[str], settings: Settings
+) -> Tuple[DeviceEntry, ...]:
     tmp_entries = []
     for e in entries:
         name, free_space = e.strip().split()
         name = name.strip()
-        if name in SETTINGS.exclude_paths:
+        if name in settings.exclude_paths:
             tmp_entries.append(DeviceEntry(name, free_space=IGNORED, ignored=True))
         else:
             free_space = int(free_space.strip())
@@ -41,7 +52,7 @@ def _parse_and_filter_entries(entries: List[str]) -> Tuple[DeviceEntry, ...]:
     return tuple(tmp_entries)
 
 
-def zpool_free_space() -> Tuple[DeviceEntry, ...]:
+def zpool_free_space(settings: Settings) -> Tuple[DeviceEntry, ...]:
     try:
         entries = (
             subprocess.run(
@@ -53,10 +64,10 @@ def zpool_free_space() -> Tuple[DeviceEntry, ...]:
     except FileNotFoundError:
         # zfs not installed, zpool command not available
         return ()
-    return _parse_and_filter_entries(entries)
+    return _parse_and_filter_entries(entries, settings)
 
 
-def devices_free_space() -> Tuple[DeviceEntry, ...]:
+def devices_free_space(settings: Settings) -> Tuple[DeviceEntry, ...]:
     entries = (
         subprocess.run(
             [
@@ -72,57 +83,77 @@ def devices_free_space() -> Tuple[DeviceEntry, ...]:
         .splitlines()[1:]  # First line is captions
     )
 
-    df_results = _parse_and_filter_entries(entries)
-    zpool_results = zpool_free_space()
+    df_results = _parse_and_filter_entries(entries, settings)
+    zpool_results = zpool_free_space(settings)
     return df_results + zpool_results
 
 
-has_alerts = False
-rows = [["Status", "Name", "Free", "Limit"]]
-low_space_devices = []
+def evaluate_free_space(
+    free_space_entries: Tuple[DeviceEntry, ...],
+    settings: Settings = Settings(),
+    default_alert_limit: int = DEFAULT_ALERT_LIMIT,
+) -> FreeSpaceReport:
+    rows = [["Status", "Name", "Free", "Limit"]]
+    low_space_devices = []
+    has_alerts = False
 
-free_space_entries = devices_free_space()
-for entry in free_space_entries:
-    if not entry:
-        continue
+    for entry in free_space_entries:
+        if not entry:
+            continue
 
-    if entry.ignored:
-        rows.append(["ignored", entry.name])
-        continue
+        if entry.ignored:
+            rows.append(["ignored", entry.name, "", ""])
+            continue
 
-    alert_limit = SETTINGS.custom_alert_limits.get(entry.name, DEFAULT_ALERT_LIMIT)
-    if entry.free_space < alert_limit:
-        status = f"LOW SPACE"
-        has_alerts = True
-        low_space_devices.append(entry.name)
+        alert_limit = settings.custom_alert_limits.get(entry.name, default_alert_limit)
+        if entry.free_space < alert_limit:
+            status = "LOW SPACE"
+            has_alerts = True
+            low_space_devices.append(entry.name)
+        else:
+            status = "ok"
+
+        rows.append(
+            [
+                status,
+                entry.name,
+                f"{entry.free_space / GB:.2f} GB",
+                f"{alert_limit / GB:.2f} GB",
+            ]
+        )
+
+    if has_alerts:
+        overall_status = f"ALERT - LOW DISK SPACE ON {', '.join(low_space_devices)}"
     else:
-        status = f"ok"
+        overall_status = "Disk space OK"
 
-    row = [
-        status,
-        entry.name,
-        f"{entry.free_space / GB:.2f} GB",
-        f"{alert_limit / GB:.2f} GB",
-    ]
-    rows.append(row)
-
-if has_alerts:
-    overall_status = f"ALERT - LOW DISK SPACE ON {', '.join(low_space_devices)}"
-else:
-    overall_status = "Disk space OK"
-
-if TABULATE_AVAILABLE:
-    formatted = tabulate(
-        rows, headers="firstrow", colalign=("left", "left", "right", "right")
+    return FreeSpaceReport(
+        overall_status=overall_status,
+        low_space_devices=tuple(low_space_devices),
+        rows=tuple(tuple(row) for row in rows),
+        has_alerts=has_alerts,
     )
-else:
+
+
+def format_report(report: FreeSpaceReport) -> str:
+    if TABULATE_AVAILABLE:
+        return "```" + tabulate(
+            report.rows, headers="firstrow", colalign=("left", "left", "right", "right")
+        ) + "```"
     formatted = ""
-    for row in rows:
-        this_row = "\t".join(row)
-        formatted = f"{formatted}{this_row}\n"
-formatted = f"```{formatted}```"
-log_and_notify_discord(
-    f"{overall_status}\n\n{formatted}",
-    has_alerts,
-)
-sys.exit(has_alerts)
+    for row in report.rows:
+        formatted += "\t".join(row) + "\n"
+    return f"```{formatted}```"
+
+
+def main() -> int:
+    settings = _load_settings()
+    free_space_entries = devices_free_space(settings)
+    report = evaluate_free_space(free_space_entries, settings)
+    formatted = format_report(report)
+    log_and_notify_discord(f"{report.overall_status}\n\n{formatted}", report.has_alerts)
+    sys.exit(1 if report.has_alerts else 0)
+
+
+if __name__ == "__main__":
+    main()

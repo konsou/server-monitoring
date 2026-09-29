@@ -1,22 +1,21 @@
 import logging
 from unittest import TestCase
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import call, patch
 
 import _smart
 import _smart_types
 from _smart_types import DeviceTestResult
-
 from tests.test_data import (
-    INFO_DICT_STATUS_OK,
+    INFO_DICT_STATUS_BLOCK_MISSING,
     INFO_DICT_STATUS_FAIL,
     INFO_DICT_STATUS_MISSING,
-    INFO_DICT_STATUS_BLOCK_MISSING,
+    INFO_DICT_STATUS_OK,
 )
 
 
 def disable_logging():
     logger = logging.getLogger("server-monitoring")
-    logger = MagicMock()
+    logger.disabled = True
 
 
 class TestSmart(TestCase):
@@ -115,7 +114,7 @@ class TestSmart(TestCase):
         mock_poll_time.return_value = 0
         _smart.short("/dev/dummy")
         mock_run.assert_called_with(
-            ["smartctl", "--test=short", "--json", "/dev/dummy"]
+            ["smartctl", "--test=short", "--json", "/dev/dummy"], capture_output=True
         )
 
     @patch("_smart.poll_time")
