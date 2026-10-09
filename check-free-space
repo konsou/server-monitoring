@@ -57,7 +57,7 @@ def zpool_free_space() -> Tuple[DeviceEntry, ...]:
     except FileNotFoundError:
         # zfs not installed, zpool command not available
         return ()
-    return _parse_and_filter_entries(entries)
+    return _parse_and_filter_entries(entries, is_zfs=True)
 
 
 def devices_free_space() -> Tuple[DeviceEntry, ...]:
